@@ -23,7 +23,8 @@ deepzero/               # 최상위 패키지
 │   ├── optim.py        # Optimizer 구현체
 │   └── losses.py       # Loss 함수 모음
 ├── models/             # 사용자 정의 모델 템플릿
-│   └── example_model.py# 샘플 모델 구현 (dataclass 기반)
+│   └── model_builder.py# 샘플 모델 구현 (dataclass 기반)
+│   └── model.py        # 모델 정의 (예: CNN, RNN 등)
 ├── utils/              # 유틸리티 모듈
 │   ├── yaml_loader.py  # YAML 설정 로더
 │   └── logger.py       # 로깅 및 체크포인트 관리
@@ -46,7 +47,7 @@ deepzero/               # 최상위 패키지
 
 1. **Conda 환경 생성 및 활성화**  
    ```bash
-   conda create -n deepzero python=3.10 -y
+   conda create -n deepzero python=3.12 -y
    conda activate deepzero
    ```
 
