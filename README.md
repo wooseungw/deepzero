@@ -1,4 +1,4 @@
-# deepzero
+# DeepZero
 
 `deepzero`는 CUDA와 NumPy를 기반으로, Python `@dataclass`를 활용하여 딥러닝 모델을 작성하고 학습 및 검증까지 실행할 수 있는 경량 프레임워크입니다. `dezero`의 설계 철학을 계승하면서, 명확한 설정 파일(YAML) 구조와 모듈화된 코드 베이스를 제공합니다.
 
