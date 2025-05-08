@@ -10,7 +10,7 @@
 - **YAML 기반 설정**: `train.yaml`과 `model.yaml` 파일만으로 학습/검증 파이프라인 자동 구성
 - **CUDA 가속**: CuPy(PyCUDA)와 NumPy 연산 지원으로 GPU 연산 최적화
 - **학습·검증 스크립트**: 단일 진입점(`train.py`, `validate.py`)으로 빠른 실험 반복
-- **로깅 & 체크포인트**: TensorBoard 호환 로그, 주기적 모델 저장
+- **로깅 & 체크포인트**: wandb 호환 로그, 주기적 모델 저장
 
 ---
 
