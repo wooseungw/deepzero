@@ -1,9 +1,11 @@
+import torch
+
 class Optimizer:
     def step(self):
-        pass
+        raise NotImplementedError
 
     def zero_grad(self):
-        pass
+        raise NotImplementedError
 
 
 class SGD(Optimizer):
@@ -13,11 +15,14 @@ class SGD(Optimizer):
 
     def step(self):
         for param in self.params:
-            param.data -= self.lr * param.grad.data
+            if param.grad is not None:
+                param.data -= self.lr * param.grad.data
 
     def zero_grad(self):
         for param in self.params:
-            param.grad.data = 0
+            if param.grad is not None:
+                param.grad.detach_()
+                param.grad.zero_()
 
 
 class Adam(Optimizer):
@@ -27,19 +32,24 @@ class Adam(Optimizer):
         self.beta1 = beta1
         self.beta2 = beta2
         self.epsilon = epsilon
-        self.m = [0] * len(params)
-        self.v = [0] * len(params)
+        self.m = [torch.zeros_like(p.data) for p in params]
+        self.v = [torch.zeros_like(p.data) for p in params]
         self.t = 0
 
     def step(self):
         self.t += 1
         for i, param in enumerate(self.params):
-            self.m[i] = self.beta1 * self.m[i] + (1 - self.beta1) * param.grad.data
-            self.v[i] = self.beta2 * self.v[i] + (1 - self.beta2) * (param.grad.data ** 2)
+            if param.grad is None:
+                continue
+            grad = param.grad.data
+            self.m[i] = self.beta1 * self.m[i] + (1 - self.beta1) * grad
+            self.v[i] = self.beta2 * self.v[i] + (1 - self.beta2) * (grad ** 2)
             m_hat = self.m[i] / (1 - self.beta1 ** self.t)
             v_hat = self.v[i] / (1 - self.beta2 ** self.t)
-            param.data -= self.lr * m_hat / (v_hat ** 0.5 + self.epsilon)
+            param.data -= self.lr * m_hat / (v_hat.sqrt() + self.epsilon)
 
     def zero_grad(self):
         for param in self.params:
-            param.grad.data = 0
+            if param.grad is not None:
+                param.grad.detach_()
+                param.grad.zero_()

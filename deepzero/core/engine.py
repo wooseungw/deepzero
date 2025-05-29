@@ -1,5 +1,5 @@
-import numpy as np
 import torch
+
 class TrainingEngine:
     def __init__(self, model, optimizer, loss_fn, train_loader, val_loader, config):
         self.model = model
