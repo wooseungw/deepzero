@@ -1,6 +1,2 @@
-model:
-  name: ExampleModel
-  input_dim: [3, 224, 224]
-  hidden_dim: 512
-  num_classes: 10
-  dropout: 0.2
+name: TestMdoel
+layers:
