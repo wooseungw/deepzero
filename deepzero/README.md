@@ -1,152 +1,181 @@
-# DeepZero
+# Torch YAML Model Zoo
 
-`deepzero`는 CUDA와 NumPy를 기반으로, Python `@dataclass`를 활용하여 딥러닝 모델을 작성하고 학습 및 검증까지 실행할 수 있는 경량 프레임워크입니다. `dezero`의 설계 철학을 계승하면서, 명확한 설정 파일(YAML) 구조와 모듈화된 코드 베이스를 제공합니다.
+> **유연한 PyTorch 모델 빌더 & 트레이너 – YAML 기반**
+> Python 코드를 직접 수정하지 않고도 커스텀 신경망을 정의·학습·공유할 수 있습니다.
 
 ---
 
-## 📦 주요 기능
+## ✨ 주요 특징
 
-- **모델 정의**: Python `@dataclass`로 간결하고 직관적인 모델 구성
-- **YAML 기반 설정**: `train.yaml`과 `model.yaml` 파일만으로 학습/검증 파이프라인 자동 구성
-- **CUDA 가속**: CuPy(PyCUDA)와 NumPy 연산 지원으로 GPU 연산 최적화
-- **학습·검증 스크립트**: 단일 진입점(`train.py`, `validate.py`)으로 빠른 실험 반복
-- **로깅 & 체크포인트**: wandb 호환 로그, 주기적 모델 저장
+| 기능                 | 설명                                                                                      |
+| ------------------ | --------------------------------------------------------------------------------------- |
+| **YAML 우선 설계**     | 단일 YAML 파일에 네트워크를 기술합니다 ‑ 레이어 순서, 반복 횟수, 스킵/컨캣 연결, 활성화 함수, 정규화, 드롭아웃까지 모두 설정 가능         |
+| **YOLO 스타일 문법**    | `[from, n, module, *args, {kwargs}]` 형태의 직관적인 튜플 문법( YOLOv5/8 계열과 동일 )                  |
+| **동적 스케일링**        | `depth_multiple`, `width_multiple` 로 반복 수와 채널 수를 전역 비율로 자동 조정                           |
+| **플러그인 모듈**        | ConvBlock · LinearBlock · TransformerEncoderBlock 등 기본 블록 제공 + 간단한 등록 API로 사용자 정의 블록 추가 |
+| **잔차·Concat 그래프**  | **from** 에 음수 인덱스나 리스트를 사용하여 스킵 연결과 멀티 브랜치 컨캣 자유롭게 구성                                   |
+| **즉시 사용 가능한 트레이너** | `train.py`, `val.py` CLI 한 줄로 학습·평가 (Mixed Precision, LR 스케줄러, EMA, 체크포인트 포함)           |
+| **배포 지원**          | TorchScript·ONNX 내보내기 단일 명령 지원                                                          |
+
+---
+
+## 📦 설치
+
+**Python ≥ 3.9** 및 **PyTorch ≥ 2.2** 필요
+
+```bash
+# 레포 클론
+$ git clone https://github.com/<your-org>/torch-yaml-model-zoo.git
+$ cd torch-yaml-model-zoo
+
+# (선택) 가상환경 생성/활성화
+$ python -m venv .venv && source .venv/bin/activate
+
+# 필수 + 추가 패키지 설치( Lightning, tqdm 등 )
+$ pip install -r requirements.txt
+```
+
+---
+
+## 🚀 빠른 시작
+
+1. **모델 설정파일** 작성 (또는 `configs/` 샘플 활용)
+2. **데이터셋 준비** (COCO‑style YAML, ImageFolder, 혹은 사용자 정의 `Dataset`)
+3. **학습**
+
+   ```bash
+   python train.py \
+       --cfg configs/example_vit.yaml \
+       --data data/coco.yaml \
+       --epochs 300 \
+       --device 0,1
+   ```
+4. **검증 / 테스트**
+
+   ```bash
+   python val.py --weights runs/exp/weights/best.pt --data data/coco.yaml
+   ```
+5. **추론**
+
+   ```python
+   from zoo import load_model
+   model = load_model('runs/exp/weights/best.pt').eval()
+   preds = model(img)  # BCHW 텐서
+   ```
+
+---
+
+## 📝 YAML 스펙
+
+```yaml
+# example_vit.yaml
+
+# ── 메타 ─────────────────────────────────────
+model: MyHybridNet           # (선택) 모델 이름(가독성용)
+in_channels: 3
+num_classes: 100
+# 스케일링
+depth_multiple: 1.0          # 반복 횟수 전역 배수
+width_multiple: 1.0          # 채널 수   전역 배수
+
+# ── 레이어 정의 ──────────────────────────────
+layers:
+  # [from, repeat, module,          args..., {kwargs}]
+  - [ -1, 1, ConvBlock,      64, 3, 2, {drop: 0.1} ]
+  - [ -1, 1, ConvBlock,     128, 3, 2, {act: relu, norm: ln} ]
+  - [ -1, 1, TransformerEncoderBlock, 128, 4, 8 ]
+  - [ -1, 1, ConvBlock,     256, 3, 2 ]
+  - [ -1, 1, GlobalAvgPool ]
+  - [ -1, 1, LinearBlock, 1024, silu ]
+  - [ -1, 1, LinearBlock, num_classes ]
+```
+
+### 필드 설명
+
+| 필드         | 타입                   | 의미                                             |
+| ---------- | -------------------- | ---------------------------------------------- |
+| **from**   | `int` \| `list[int]` | 입력 인덱스(음수 = 현재 위치 기준). 리스트는 concat 입력을 의미      |
+| **repeat** | `int`                | 블록 반복 횟수 (`depth_multiple`로 스케일 조정)            |
+| **module** | `str`                | `core/layers.py` 에 등록된 클래스 이름                  |
+| **args…**  | mixed                | 모듈로 전달되는 위치 인자. 채널 관련 값은 `width_multiple`로 스케일 |
+| **kwargs** | dict                 | 선택적 키워드 인자 (활성화 `act`, 정규화 `norm`, `drop` 등)   |
+
+#### 활성화 함수(`act`) 예시
+
+`silu`, `relu`, `gelu`, `leaky`, `tanh`, `sigmoid` 또는 사용자 정의 callable
+
+#### 정규화(`norm`) 옵션
+
+`bn`(BatchNorm), `gn`(GroupNorm), `ln`(LayerNorm), `in`(InstanceNorm), `none`
+
+#### 드롭아웃(`drop`)
+
+0≤ 실수 <1.0. **ConvBlock**, **LinearBlock** 에 적용
+
+---
+
+## 🔧 커스텀 레이어 추가하기
+
+1. `deepzero/core/layers.py` 에 새 클래스 작성
+
+```python
+@register_module
+autograd.no_grad()  # 필요 시
+class MyAwesomeBlock(nn.Module):
+    def __init__(self, c_in, c_out, *args, **kwargs):
+        super().__init__()
+        # 레이어 구성 …
+    def forward(self, x):
+        return x + 42  # 멋진 동작
+```
+
+2. YAML에서 사용
+
+```yaml
+- [ -1, 1, MyAwesomeBlock, 256, 256 ]
+```
+
+`build_model_from_yaml()` 가 자동으로 찾아 빌드합니다.
 
 ---
 
 ## 📂 프로젝트 구조
 
 ```
-deepzero/               # 최상위 패키지
-├── core/               # 핵심 모듈 (엔진, 옵티마이저, 손실 함수 등)
-│   ├── engine.py       # 학습 및 검증 엔진
-│   ├── optim.py        # Optimizer 구현체
-│   └── losses.py       # Loss 함수 모음
-├── models/             # 사용자 정의 모델 템플릿
-│   ├── model_builder.py # 샘플 모델 구현 (dataclass 기반)
-│   └── model.py        # 모델 정의 (예: CNN, RNN 등)
-├── utils/              # 유틸리티 모듈
-│   ├── yaml_loader.py  # YAML 설정 로더
-│   └── logger.py       # 로깅 및 체크포인트 관리
-├── configs/            # 기본 설정 파일
-│   ├── train.yaml      # 학습 파라미터 (에포크, 학습률 등)
-│   └── model.yaml      # 모델 구조 및 하이퍼파라미터
-├── scripts/            # 도움 스크립트 (환경설정, 배포 등)
-│   └── setup_env.sh    # Conda/venv 환경 생성 예시
-├── requirements.txt    # Python 패키지 의존성 목록
-├── train.py            # 학습 실행 스크립트
-├── validate.py         # 검증 실행 스크립트
-└── README.md           # 프로젝트 설명 (이 파일)
+├─ core/              # 모델 빌더 & 레이어 정의
+│  ├─ model_builder.py
+│  └─ layers.py
+├─ configs/           # YAML 모델 설정
+├─ data/              # 데이터셋 YAML / 스크립트
+├─ train.py           # 학습 엔트리포인트
+├─ val.py             # 평가 스크립트
+└─ utils/             # 시각화, 메트릭 등
 ```
 
 ---
 
-## 🛠️ 설치 및 환경 설정
+## 🤝 기여하기
 
-아래 예시는 Conda 환경을 기준으로 설명합니다.
-
-1. **Conda 환경 생성 및 활성화**  
-   ```bash
-   conda create -n deepzero python=3.12 -y
-   conda activate deepzero
-   ```
-
-2. **의존성 설치**  
-   ```bash
-   pip install --upgrade pip
-   pip install -r requirements.txt
-   ```
-
-3. **CUDA Toolkit 확인**  
-   - 시스템에 알맞은 CUDA Toolkit (예: 11.x 이상) 설치 및 `nvcc --version`으로 버전 확인
-   - CuPy 설치 예 (CUDA 11.x):  
-     ```bash
-     pip install cupy-cuda11x
-     ```
+Pull Request 환영!  코딩 스타일·테스트·새 레이어/스케줄러 추가 방법은 `CONTRIBUTING.md` 참고.
 
 ---
 
-## 📑 requirements.txt 예시
+## 📅 로드맵
 
-```
-numpy>=1.23
-cupy>=11.0         # GPU 가속 연산
-pyyaml>=6.0        # 설정 파일 파싱
-tqdm>=4.64         # 진행바
-tensorboard>=2.12  # 로그 시각화
-```
-
----
-
-## 🚀 사용법
-
-### 1. 학습 실행
-
-```bash
-python train.py \
-  --config configs/train.yaml \
-  --model-config configs/model.yaml
-```
-
-- `--config`: 학습 파라미터(YAML)
-- `--model-config`: 모델 구조 및 하이퍼파라미터(YAML)
-
-### 2. 검증 실행
-
-학습과 동일한 방식으로, `validate.py`를 사용하여 검증만 수행할 수 있습니다.
-
-```bash
-python validate.py \
-  --config configs/train.yaml \
-  --model-config configs/model.yaml
-```
-
-- 자동으로 학습된 체크포인트를 로드하여 검증 진행
-
----
-
-## ⚙️ 설정 파일 (YAML) 설명
-
-### configs/train.yaml
-
-```yaml
-training:
-  epochs: 50
-  batch_size: 32
-  learning_rate: 0.001
-  checkpoint_interval: 5
-  log_dir: './logs'
-```
-
-### configs/model.yaml
-
-```yaml
-model:
-  name: ExampleModel
-  input_dim: 3,224,224
-  hidden_dim: 512
-  num_classes: 10
-  dropout: 0.2
-```
-
-- **training**: 학습 루프 관련 파라미터
-- **model**: `@dataclass` 기반 모델 초기화 인자
-
----
-
-## 📄 기여
-
-1. Fork 후 브랜치 생성 (`git checkout -b feature/your-feature`)  
-2. 코드 작성 및 테스트  
-3. Pull Request 생성  
-4. 리뷰 및 병합
+* [x] 기본 YOLO 스타일 파서
+* [x] Conv/Linear/Transformer 블록
+* [x] Mixed‑precision & EMA 학습
+* [ ] YAML 공간 NAS 탐색
+* [ ] GUI 설정 편집기(Gradio)
 
 ---
 
 ## 📜 라이선스
 
-MIT License
+본 프로젝트는 **Apache-2.0** 라이선스로 배포됩니다. 상세 내용은 [LICENSE](LICENSE) 파일 참조.
 
 ---
 
-*Happy Coding!*
+## 🙌 Acknowledgements
+
+ultralytics/YOLOv8, PyTorch Lightning, 그리고 수많은 오픈소스 기여자에게 영감을 받았습니다.
