@@ -1,6 +1,6 @@
 import torch
 
-class TrainingEngine:
+class Engine:
     def __init__(self, model, optimizer, loss_fn, train_loader, val_loader, config):
         self.model = model
         self.optimizer = optimizer
