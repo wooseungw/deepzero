@@ -1,184 +1,95 @@
-"""
-model_builder.py
-
-요구사항을 충족하는 YAML 기반 동적 모델 빌더.
-- YOLO-style 튜플 표기와 딕셔너리 표기 모두 지원
-- depth_multiple / width_multiple 전역 스케일링
-- from 인덱스를 통한 잔차·Concat 그래프
-- 레이어별 act / norm / drop 지정
-"""
-
-from __future__ import annotations
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
-
+import math
+import yaml
 import torch
 import torch.nn as nn
-import yaml
+from typing import Any, Dict, List
+from .layers import BlockBase
 
-# ------------------------------------------------------------------ #
-# 레이어 레지스트리 (예: ConvBlock, LinearBlock 등)
-# ------------------------------------------------------------------ #
-MODULE_REGISTRY: Dict[str, nn.Module] = {}
+def _n_rep(n, dm): return max(round(n * dm), 1)
 
+def _make_divisible(v, d=8): return math.ceil(v / d) * d
 
-def register_module(cls):
-    """@register_module 데코레이터로 레지스트리에 자동 등록"""
-    MODULE_REGISTRY[cls.__name__] = cls
-    return cls
-
-
-# ------------------------------------------------------------------ #
-# 유틸
-# ------------------------------------------------------------------ #
-def _load_cfg(src: Union[str, Path, dict]) -> Dict[str, Any]:
-    if isinstance(src, dict):
-        return src
-    src = Path(src)
-    if not src.exists():
-        raise FileNotFoundError(src)
-    with src.open("r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
-
-
-# ------------------------------------------------------------------ #
-# 핵심 빌더
-# ------------------------------------------------------------------ #
-class _YAMLNet(nn.Module):
-    """YOLO-style YAML → PyTorch 그래프"""
-
-    def __init__(self, cfg: Union[str, Path, dict], mode: str = "train"):
+class Layer(nn.Module):
+    """from 인덱스의 출력들을 받아 내부 block 호출"""
+    def __init__(self, block: nn.Module, from_idx: int):
         super().__init__()
-        self.cfg = _load_cfg(cfg)
-        self.mode = mode
+        self.block, self.f = block, from_idx
+    def forward(self, outs: List[torch.Tensor]):
+        return self.block(outs[self.f])
 
-        # 글로벌 설정
-        self.in_channels = self.cfg.get("in_channels", 3)
-        self.num_classes = self.cfg.get("num_classes", 1000)
-        self.d_mult = float(self.cfg.get("depth_multiple", 1.0))
-        self.w_mult = float(self.cfg.get("width_multiple", 1.0))
-
-        self.layer_defs: List[Any] = self.cfg["layers"]
-        self.model, self.save = self._build()
-
-    # -------------------------------------------------------------- #
-    def _norm_layer_def(self, entry: Any) -> Dict[str, Any]:
-        """튜플/리스트/딕트를 단일 dict 형태로 변환"""
-        if isinstance(entry, (list, tuple)):
-            base = list(entry)
-            kwargs = {}
-            if base and isinstance(base[-1], dict):
-                kwargs = base.pop(-1)
-            from_idx, repeat, module_name, *args = base
-            return dict(from_=from_idx, repeat=repeat, module=module_name, args=args, kwargs=kwargs)
-        if isinstance(entry, dict):
-            return dict(
-                from_=entry.get("from", -1),
-                repeat=entry.get("repeat", 1),
-                module=entry["type"],
-                args=entry.get("args", []),
-                kwargs=entry.get("kwargs", {}),
-            )
-        raise TypeError(f"Invalid layer definition: {entry}")
-
-    # -------------------------------------------------------------- #
-    def _build(self):
-        layers = nn.ModuleList()
-        save: List[int] = []
-        ch: List[int] = [self.in_channels]  # outs channel tracker (index aligned)
-
-        for i, raw in enumerate(self.layer_defs):
-            info = self._norm_layer_def(raw)
-            f, n, m_name, args, kwargs = info["from_"], info["repeat"], info["module"], list(info["args"]), dict(info["kwargs"])
-
-            # depth scaling
-            n = max(round(n * self.d_mult), 1) if n > 1 else n
-
-            # width scaling (첫 arg가 채널/피처인 경우)
-            if args and isinstance(args[0], int):
-                args[0] = int(args[0] * self.w_mult)
-
-            m_cls = MODULE_REGISTRY.get(m_name)
-            if m_cls is None:
-                raise ValueError(f"Module {m_name} not registered")
-
-            def _in_channels():
-                if isinstance(f, int):
-                    return ch[f if f != -1 else -1]
-                return sum(ch[j] for j in f)
-
-            in_ch = _in_channels()
-            blocks = []
-            for _ in range(n):
-                blk = m_cls(in_ch, *args, **kwargs) if args else m_cls(in_ch, **kwargs)
-                blocks.append(blk)
-                if args:
-                    in_ch = args[0]  # 다음 반복을 위해 out_channels 갱신
-
-            layers.append(blocks[0] if n == 1 else nn.Sequential(*blocks))
-
-            # output channels 추정
-            out_ch = args[0] if args else in_ch
-            ch.append(out_ch)
-
-            # skip/concat용 save 인덱스 기록
-            if isinstance(f, (list, tuple)) or f < i - 1:
-                save.append(i)
-
-        return layers, sorted(save)
-
-    # -------------------------------------------------------------- #
-    def forward(self, x):
-        outs = [x]
-        for i, m in enumerate(self.model):
-            info = self._norm_layer_def(self.layer_defs[i])
-            f = info["from_"]
-            if isinstance(f, int):
-                x_in = outs[f if f != -1 else -1]
-            else:
-                x_in = torch.cat([outs[j] for j in f], dim=1)
-            outs.append(m(x_in))
-        return outs[-1]
-
-
-# ------------------------------------------------------------------ #
-# 사용자 친화적 Dataclass 래퍼
-# ------------------------------------------------------------------ #
-@dataclass
-class ModelBuilder:
+def _resolve(v, cfg):
     """
-    YAML 설정 기반 동적 모델 생성기
-    Example:
-        builder = ModelBuilder(cfg="configs/example.yaml")
-        model   = builder.build()
+    • v 가 문자열이고 cfg 에 키가 존재하면 cfg 값으로 치환
+    • 그 외에는 그대로 반환
     """
+    return cfg[v] if isinstance(v, str) and v in cfg else v
 
-    cfg: Union[str, Path, dict]
-    mode: str = "train"
-    _model: nn.Module = field(init=False, repr=False)
+def parse_model(cfg: Dict[str, Any]) -> nn.Module:
+    gd, gw = cfg["depth_multiple"], cfg["width_multiple"]
+    layers_cfg = cfg["layers"]
+    ch: List[int] = [cfg["in_channels"]]
+    layers: List[nn.Module] = []
 
-    def __post_init__(self):
-        self._model = _YAMLNet(self.cfg, self.mode)
+    for (f, n, name, *args) in layers_cfg:
+        # YAML 마지막 값이 dict라면 공통 kwargs로 분리
+        kw = {}
+        if args and isinstance(args[-1], dict):
+            kw = args[-1]
+            args = args[:-1]
+        n = _n_rep(n, gd)
+        BlockCls = BlockBase.registry[name]
 
-    # 내부 nn.Module 직접 접근용 프로퍼티
-    @property
-    def model(self) -> nn.Module:
-        return self._model
+        if name == "ConvBlock":
+            c_out, k, s = [_resolve(a, cfg) for a in args]
+            c_out = _make_divisible(int(c_out * gw))
+            blocks = [BlockCls.build(ch[f] if j == 0 else c_out,
+                                     c_out, k, s, **kw)
+                      for j in range(n)]
+            ch.append(c_out)
 
-    # 빌드된 모델 반환
-    def build(self) -> nn.Module:
-        return self._model
+        elif name == "LinearBlock":
+            out_f = _resolve(args[0], cfg)
+            # positional 두 번째 인자를 act 로 간주 (선택)
+            if len(args) > 1:
+                kw.setdefault("act", args[1])
+            blocks = [BlockCls.build(ch[f], out_f, **kw) for _ in range(n)]
+            ch.append(out_f)
 
-    # 간단 요약
-    def summary(self) -> str:
-        lines = ["Model Summary", "=" * 40]
-        for i, layer in enumerate(self._model.model):
-            lines.append(f"{i:3d}: {layer.__class__.__name__}")
-        return "\n".join(lines)
+        elif name == "TransformerEncoderBlock":
+            dim, heads, mlp = [_resolve(a, cfg) for a in args]
+            blocks = [BlockCls.build(dim, heads, mlp, **kw) for _ in range(n)]
+            ch.append(dim)
+
+        else:  # GlobalAvgPool 등
+            blocks = [BlockCls.build(ch[f], *args, **kw) for _ in range(n)]
+            ch.append(ch[f])
+
+        seq = nn.Sequential(*blocks) if len(blocks) > 1 else blocks[0]
+        layers.append(Layer(seq, f))
+
+    return Model(layers)
 
 
-# ------------------------------------------------------------------ #
-def build_model_from_yaml(cfg: Union[str, Path, dict], mode: str = "train") -> nn.Module:
-    """Convenience 함수 (기존 API 호환)"""
-    return _YAMLNet(cfg, mode)
+# -----------------------------------------------------------------
+# Model wrapper for tensor-list propagation
+# -----------------------------------------------------------------
+class Model(nn.Module):
+    """Wraps the parsed layer list and handles tensor‑list propagation."""
+    def __init__(self, layers: List[nn.Module]):
+        super().__init__()
+        self.layers = nn.ModuleList(layers)
+
+    def forward(self, x: torch.Tensor):
+        outs: List[torch.Tensor] = [x]  # index 0 corresponds to input
+        for layer in self.layers:
+            y = layer(outs)
+            outs.append(y)
+        return outs[-1]  # final output
+
+def build_model_from_yaml(path: str, in_channels: int = 3) -> nn.Module:
+    with open(path, "r", encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+    cfg["in_channels"] = in_channels
+    model = parse_model(cfg)
+    model.yaml = cfg
+    return model

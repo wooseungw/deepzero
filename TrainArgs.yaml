@@ -1,5 +1,0 @@
-optimizer: Adam
-learning_rate: 0.001
-loss: CrossEntropyLoss
-epochs: 10
-batch_size: 32
