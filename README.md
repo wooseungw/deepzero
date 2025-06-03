@@ -154,19 +154,15 @@ class MyAwesomeBlock(nn.Module):
 
 ---
 
-## 🤝 기여하기
-
-Pull Request 환영!  코딩 스타일·테스트·새 레이어/스케줄러 추가 방법은 `CONTRIBUTING.md` 참고.
-
----
-
 ## 📅 로드맵
 
 * [x] 기본 YOLO 스타일 파서
 * [x] Conv/Linear/Transformer 블록
-* [x] Mixed‑precision & EMA 학습
-* [ ] YAML 공간 NAS 탐색
-* [ ] GUI 설정 편집기(Gradio)
+* [x] 시각화 도구
+* [ ] 사전학습 모델 지원
+* [ ] 모델 python 코드로 변환
+
+
 
 ---
 
