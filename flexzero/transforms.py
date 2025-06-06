@@ -3,7 +3,7 @@ try:
     import Image
 except ImportError:
     from PIL import Image
-from dezero.utils import pair
+from flexzero.utils import pair
 
 
 class Compose:

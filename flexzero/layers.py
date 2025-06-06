@@ -1,10 +1,11 @@
 import os
 import weakref
 import numpy as np
-import dezero.functions as F
-from dezero import cuda
-from dezero.core import Parameter
-from dezero.utils import pair
+import flexzero
+import flexzero.functions as F
+from flexzero import cuda
+from flexzero.core import Parameter
+from flexzero.utils import pair
 
 
 # =============================================================================
@@ -118,8 +119,8 @@ class Linear(Layer):
 
 
 class Conv2d(Layer):
-    def __init__(self, out_channels, kernel_size, stride=1,
-                 pad=0, nobias=False, dtype=np.float32, in_channels=None):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1,
+                 pad=0, nobias=False, dtype=np.float32):
         """Two-dimensional convolutional layer.
 
         Args:
@@ -300,8 +301,27 @@ class EmbedID(Layer):
         y = self.W[x]
         return y
 
+class LayerNormalization(Layer):
+    def __init__(self, normalized_shape, eps=1e-5, dtype=np.float32):
+        """Layer normalization layer.
 
-class BatchNorm(Layer):
+        Args:
+            normalized_shape (int or tuple): Shape of the input to normalize.
+            eps (float): A small value added to the denominator for numerical stability.
+            dtype (data-type): Data type of the parameters.
+        """
+        super().__init__()
+        self.normalized_shape = normalized_shape
+        self.eps = eps
+        self.dtype = dtype
+
+        self.gamma = Parameter(np.ones(normalized_shape, dtype=dtype), name='gamma')
+        self.beta = Parameter(np.zeros(normalized_shape, dtype=dtype), name='beta')
+
+    def forward(self, x):
+        return F.layer_norm(x, self.gamma, self.beta, self.normalized_shape, self.eps)
+
+class BatchNormalization(Layer):
     def __init__(self):
         super().__init__()
         # `.avg_mean` and `.avg_var` are `Parameter` objects, so they will be
@@ -329,3 +349,23 @@ class BatchNorm(Layer):
             self._init_params(x)
         return F.batch_nrom(x, self.gamma, self.beta, self.avg_mean.data,
                             self.avg_var.data)
+        
+# =============================================================================
+# Dropout
+# =============================================================================
+class Dropout(Layer):
+    def __init__(self, ratio=0.5):
+        """Dropout layer.
+
+        Args:
+            ratio (float): The probability of dropping out a unit.
+        """
+        super().__init__()
+        self.ratio = ratio
+
+    def forward(self, x):
+        # Use global Config.train flag to determine mode
+        if flexzero.Config.train:
+            return F.dropout(x, self.ratio)
+        else:
+            return x

@@ -1,5 +1,5 @@
 import math
-from dezero import cuda, Parameter
+from flexzero import cuda, Parameter
 
 
 # =============================================================================

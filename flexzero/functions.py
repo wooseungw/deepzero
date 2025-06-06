@@ -1,7 +1,7 @@
 import numpy as np
-import dezero
-from dezero import cuda, utils
-from dezero.core import Function, Variable, as_variable, as_array
+import flexzero
+from flexzero import cuda, utils
+from flexzero.core import Function, Variable, as_variable, as_array
 
 
 # =============================================================================
@@ -150,7 +150,7 @@ class GetItemGrad(Function):
         self.in_shape = in_shape
 
     def forward(self, gy):
-        xp = dezero.cuda.get_array_module(gy)
+        xp = flexzero.cuda.get_array_module(gy)
         gx = xp.zeros(self.in_shape, dtype=gy.dtype)
 
         if xp is np:
@@ -230,7 +230,7 @@ class BroadcastTo(Function):
 
     def forward(self, x):
         self.x_shape = x.shape
-        xp = dezero.cuda.get_array_module(x)
+        xp = flexzero.cuda.get_array_module(x)
         y = xp.broadcast_to(x, self.shape)
         return y
 
@@ -517,7 +517,7 @@ def accuracy(y, t):
 def dropout(x, dropout_ratio=0.5):
     x = as_variable(x)
 
-    if dezero.Config.train:
+    if flexzero.Config.train:
         xp = cuda.get_array_module(x)
         mask = xp.random.rand(*x.shape) > dropout_ratio
         scale = xp.array(1.0 - dropout_ratio).astype(x.dtype)
@@ -546,7 +546,7 @@ class BatchNorm(Function):
 
         xp = cuda.get_array_module(x)
 
-        if dezero.Config.train:
+        if flexzero.Config.train:
             mean = x.mean(axis=0)
             var = x.var(axis=0)
             inv_std = 1 / xp.sqrt(var + self.eps)
@@ -601,6 +601,44 @@ def batch_nrom(x, gamma, beta, mean, var, decay=0.9, eps=2e-5):
 
 def embed_id(x, W):
     return W[x]
+
+class LayerNorm(Function):
+    def __init__(self, shape, eps=1e-5):
+        self.shape = shape
+        self.eps = eps
+
+    def forward(self, x):
+        xp = cuda.get_array_module(x)
+        mean = x.mean(axis=-1, keepdims=True)
+        var = x.var(axis=-1, keepdims=True)
+        inv_std = 1 / xp.sqrt(var + self.eps)
+        y = (x - mean) * inv_std
+        return y
+
+    def backward(self, gy):
+        x, = self.inputs
+        mean = x.mean(axis=-1, keepdims=True)
+        var = x.var(axis=-1, keepdims=True)
+        inv_std = 1 / (var + self.eps) ** 0.5
+
+        gx = gy * inv_std
+        gx -= gy.mean(axis=-1, keepdims=True) * inv_std
+        gx -= (x - mean) * gy.sum(axis=-1, keepdims=True) * inv_std ** 2 / x.shape[-1]
+        return gx
+    
+def layer_norm(x, shape, eps=1e-5):
+    """
+    Layer normalization function.
+    
+    Args:
+        x (Variable): Input variable.
+        shape (tuple): Shape of the input variable.
+        eps (float): Small value to avoid division by zero.
+    
+    Returns:
+        Variable: Normalized output variable.
+    """
+    return LayerNorm(shape, eps)(x)
 
 
 # =============================================================================
@@ -664,18 +702,18 @@ def clip(x, x_min, x_max):
 # =============================================================================
 # conv2d / col2im / im2col / basic_math
 # =============================================================================
-from dezero.functions_conv import conv2d
-from dezero.functions_conv import deconv2d
-from dezero.functions_conv import conv2d_simple
-from dezero.functions_conv import im2col
-from dezero.functions_conv import col2im
-from dezero.functions_conv import pooling_simple
-from dezero.functions_conv import pooling
-from dezero.functions_conv import average_pooling
-from dezero.core import add
-from dezero.core import sub
-from dezero.core import rsub
-from dezero.core import mul
-from dezero.core import div
-from dezero.core import neg
-from dezero.core import pow
+from flexzero.functions_conv import conv2d
+from flexzero.functions_conv import deconv2d
+from flexzero.functions_conv import conv2d_simple
+from flexzero.functions_conv import im2col
+from flexzero.functions_conv import col2im
+from flexzero.functions_conv import pooling_simple
+from flexzero.functions_conv import pooling
+from flexzero.functions_conv import average_pooling
+from flexzero.core import add
+from flexzero.core import sub
+from flexzero.core import rsub
+from flexzero.core import mul
+from flexzero.core import div
+from flexzero.core import neg
+from flexzero.core import pow

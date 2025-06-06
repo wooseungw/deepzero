@@ -1,8 +1,8 @@
 import numpy as np
-from dezero import cuda
-from dezero.core import Function, as_variable
-from dezero.utils import pair, get_conv_outsize, get_deconv_outsize
-from dezero.functions import linear, broadcast_to
+from flexzero import cuda
+from flexzero.core import Function, as_variable
+from flexzero.utils import pair, get_conv_outsize, get_deconv_outsize
+from flexzero.functions import linear, broadcast_to
 
 
 # =============================================================================

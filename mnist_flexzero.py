@@ -2,6 +2,7 @@ import flexzero
 import flexzero.functions as F
 from flexzero import DataLoader
 from flexzero.models import MLP
+from flexzero.autobuilder import YamlModel
 
 
 max_epoch = 5
@@ -13,7 +14,10 @@ test_set = flexzero.datasets.MNIST(train=False)
 train_loader = DataLoader(train_set, batch_size)
 test_loader = DataLoader(test_set, batch_size, shuffle=False)
 
-model = MLP((hidden_size, hidden_size, 10), activation=F.relu)
+
+config_path = "configs/model.yaml"
+# 2) 모델 생성
+model = YamlModel(config_path)
 optimizer = flexzero.optimizers.Adam().setup(model)
 optimizer.add_hook(flexzero.optimizers.WeightDecay(1e-4))  # Weight decay
 

@@ -1,7 +1,7 @@
 from setuptools import setup
-from dezero import __version__
+from flexzero import __version__
 
-setup(name='dezero',
+setup(name='flexzero',
       version=__version__,
       license='MIT License',
       install_requires=['numpy'],

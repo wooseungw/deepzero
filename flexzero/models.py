@@ -1,8 +1,8 @@
 import numpy as np
-from dezero import Layer
-import dezero.functions as F
-import dezero.layers as L
-from dezero import utils
+from flexzero import Layer
+import flexzero.functions as F
+import flexzero.layers as L
+from flexzero import utils
 
 
 
@@ -13,6 +13,28 @@ class Model(Layer):
     def plot(self, *inputs, to_file='model.png'):
         y = self.forward(*inputs)
         return utils.plot_dot_graph(y, verbose=True, to_file=to_file)
+
+    def add_child(self, name, layer):
+        """
+        Add a child layer to the model with a given name.
+        Registers the layer as an attribute and adds it to tracking.
+        """
+        if not isinstance(layer, Layer):
+            raise TypeError('layer must be an instance of Layer')
+        # Set the layer as an attribute so it's accessible by name
+        setattr(self, name, layer)
+        # Register this layer for parameter tracking
+        self.add_layer(layer)
+        return layer
+
+    def add_layer(self, layer):
+        """
+        Register the child layer for parameter tracking.
+        Since assigning as an attribute already registers parameters,
+        this method can be a no-op or used for additional bookkeeping.
+        """
+        # No action needed because Layer.__setattr__ already tracks child Layers.
+        return
 
 
 class Sequential(Model):

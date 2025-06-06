@@ -1,6 +1,7 @@
 import weakref
 import numpy as np
 import contextlib
+import flexzero
 
 
 # =============================================================================
@@ -8,6 +9,7 @@ import contextlib
 # =============================================================================
 class Config:
     enable_backprop = True
+    train = True
 
 
 @contextlib.contextmanager
@@ -24,15 +26,25 @@ def no_grad():
     return using_config('enable_backprop', False)
 
 
+def test_mode():
+    return using_config('train', False)
+
 # =============================================================================
 # Variable / Function
 # =============================================================================
+try:
+    import cupy
+    array_types = (np.ndarray, cupy.ndarray)
+except ImportError:
+    array_types = (np.ndarray)
+
+
 class Variable:
     __array_priority__ = 200
 
     def __init__(self, data, name=None):
         if data is not None:
-            if not isinstance(data, np.ndarray):
+            if not isinstance(data, array_types):
                 raise TypeError('{} is not supported'.format(type(data)))
 
         self.data = data
@@ -70,12 +82,16 @@ class Variable:
         self.creator = func
         self.generation = func.generation + 1
 
+    def unchain(self):
+        self.creator = None
+
     def cleargrad(self):
         self.grad = None
 
-    def backward(self, retain_grad=False):
+    def backward(self, retain_grad=False, create_graph=False):
         if self.grad is None:
-            self.grad = np.ones_like(self.data)
+            xp = flexzero.cuda.get_array_module(self.data)
+            self.grad = Variable(xp.ones_like(self.data))
 
         funcs = []
         seen_set = set()
@@ -87,26 +103,69 @@ class Variable:
                 funcs.sort(key=lambda x: x.generation)
 
         add_func(self.creator)
-
         while funcs:
             f = funcs.pop()
             gys = [output().grad for output in f.outputs]  # output is weakref
-            gxs = f.backward(*gys)
-            if not isinstance(gxs, tuple):
-                gxs = (gxs,)
 
-            for x, gx in zip(f.inputs, gxs):
-                if x.grad is None:
-                    x.grad = gx
-                else:
-                    x.grad = x.grad + gx
+            with using_config('enable_backprop', create_graph):
+                gxs = f.backward(*gys)
+                if not isinstance(gxs, tuple):
+                    gxs = (gxs,)
 
-                if x.creator is not None:
-                    add_func(x.creator)
+                for x, gx in zip(f.inputs, gxs):
+                    if x.grad is None:
+                        x.grad = gx
+                    else:
+                        x.grad = x.grad + gx
+
+                    if x.creator is not None:
+                        add_func(x.creator)
 
             if not retain_grad:
                 for y in f.outputs:
                     y().grad = None  # y is weakref
+
+    def unchain_backward(self):
+        if self.creator is not None:
+            funcs = [self.creator]
+            while funcs:
+                f = funcs.pop()
+                for x in f.inputs:
+                    if x.creator is not None:
+                        funcs.append(x.creator)
+                        x.unchain()
+
+    def reshape(self, *shape):
+        if len(shape) == 1 and isinstance(shape[0], (tuple, list)):
+            shape = shape[0]
+        return flexzero.functions.reshape(self, shape)
+
+    def transpose(self, *axes):
+        if len(axes) == 0:
+            axes = None
+        elif len(axes) == 1:
+            if isinstance(axes[0], (tuple, list)) or axes[0] is None:
+                axes = axes[0]
+        return flexzero.functions.transpose(self, axes)
+
+    @property
+    def T(self):
+        return flexzero.functions.transpose(self)
+
+    def sum(self, axis=None, keepdims=False):
+        return flexzero.functions.sum(self, axis, keepdims)
+
+    def to_cpu(self):
+        if self.data is not None:
+            self.data = flexzero.cuda.as_numpy(self.data)
+
+    def to_gpu(self):
+        if self.data is not None:
+            self.data = flexzero.cuda.as_cupy(self.data)
+
+
+class Parameter(Variable):
+    pass
 
 
 def as_variable(obj):
@@ -115,9 +174,9 @@ def as_variable(obj):
     return Variable(obj)
 
 
-def as_array(x):
+def as_array(x, array_module=np):
     if np.isscalar(x):
-        return np.array(x)
+        return array_module.array(x)
     return x
 
 
@@ -152,15 +211,20 @@ class Function:
 # =============================================================================
 class Add(Function):
     def forward(self, x0, x1):
+        self.x0_shape, self.x1_shape = x0.shape, x1.shape
         y = x0 + x1
         return y
 
     def backward(self, gy):
-        return gy, gy
+        gx0, gx1 = gy, gy
+        if self.x0_shape != self.x1_shape:  # for broadcaset
+            gx0 = flexzero.functions.sum_to(gx0, self.x0_shape)
+            gx1 = flexzero.functions.sum_to(gx1, self.x1_shape)
+        return gx0, gx1
 
 
 def add(x0, x1):
-    x1 = as_array(x1)
+    x1 = as_array(x1, flexzero.cuda.get_array_module(x0.data))
     return Add()(x0, x1)
 
 
@@ -170,12 +234,17 @@ class Mul(Function):
         return y
 
     def backward(self, gy):
-        x0, x1 = self.inputs[0].data, self.inputs[1].data
-        return gy * x1, gy * x0
+        x0, x1 = self.inputs
+        gx0 = gy * x1
+        gx1 = gy * x0
+        if x0.shape != x1.shape:  # for broadcast
+            gx0 = flexzero.functions.sum_to(gx0, x0.shape)
+            gx1 = flexzero.functions.sum_to(gx1, x1.shape)
+        return gx0, gx1
 
 
 def mul(x0, x1):
-    x1 = as_array(x1)
+    x1 = as_array(x1, flexzero.cuda.get_array_module(x0.data))
     return Mul()(x0, x1)
 
 
@@ -193,20 +262,26 @@ def neg(x):
 
 class Sub(Function):
     def forward(self, x0, x1):
+        self.x0_shape, self.x1_shape = x0.shape, x1.shape
         y = x0 - x1
         return y
 
     def backward(self, gy):
-        return gy, -gy
+        gx0 = gy
+        gx1 = -gy
+        if self.x0_shape != self.x1_shape:  # for broadcast
+            gx0 = flexzero.functions.sum_to(gx0, self.x0_shape)
+            gx1 = flexzero.functions.sum_to(gx1, self.x1_shape)
+        return gx0, gx1
 
 
 def sub(x0, x1):
-    x1 = as_array(x1)
+    x1 = as_array(x1, flexzero.cuda.get_array_module(x0.data))
     return Sub()(x0, x1)
 
 
 def rsub(x0, x1):
-    x1 = as_array(x1)
+    x1 = as_array(x1, flexzero.cuda.get_array_module(x0.data))
     return Sub()(x1, x0)
 
 
@@ -216,19 +291,22 @@ class Div(Function):
         return y
 
     def backward(self, gy):
-        x0, x1 = self.inputs[0].data, self.inputs[1].data
+        x0, x1 = self.inputs
         gx0 = gy / x1
         gx1 = gy * (-x0 / x1 ** 2)
+        if x0.shape != x1.shape:  # for broadcast
+            gx0 = flexzero.functions.sum_to(gx0, x0.shape)
+            gx1 = flexzero.functions.sum_to(gx1, x1.shape)
         return gx0, gx1
 
 
 def div(x0, x1):
-    x1 = as_array(x1)
+    x1 = as_array(x1, flexzero.cuda.get_array_module(x0.data))
     return Div()(x0, x1)
 
 
 def rdiv(x0, x1):
-    x1 = as_array(x1)
+    x1 = as_array(x1, flexzero.cuda.get_array_module(x0.data))
     return Div()(x1, x0)
 
 
@@ -241,9 +319,8 @@ class Pow(Function):
         return y
 
     def backward(self, gy):
-        x = self.inputs[0].data
+        x, = self.inputs
         c = self.c
-
         gx = c * x ** (c - 1) * gy
         return gx
 
@@ -263,3 +340,9 @@ def setup_variable():
     Variable.__truediv__ = div
     Variable.__rtruediv__ = rdiv
     Variable.__pow__ = pow
+    Variable.__getitem__ = flexzero.functions.get_item
+
+    Variable.matmaul = flexzero.functions.matmul
+    Variable.dot = flexzero.functions.matmul
+    Variable.max = flexzero.functions.max
+    Variable.min = flexzero.functions.min
