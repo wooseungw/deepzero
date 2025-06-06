@@ -7,17 +7,17 @@ from flexzero.autobuilder import YamlModel
 
 max_epoch = 5
 batch_size = 100
-hidden_size = 1000
-
 train_set = flexzero.datasets.MNIST(train=True)
 test_set = flexzero.datasets.MNIST(train=False)
 train_loader = DataLoader(train_set, batch_size)
 test_loader = DataLoader(test_set, batch_size, shuffle=False)
 
 
-config_path = "configs/model.yaml"
+config_path = "configs/mnist_model.yaml"
 # 2) 모델 생성
 model = YamlModel(config_path)
+x, t = train_loader.next()
+model.plot(x)
 optimizer = flexzero.optimizers.Adam().setup(model)
 optimizer.add_hook(flexzero.optimizers.WeightDecay(1e-4))  # Weight decay
 

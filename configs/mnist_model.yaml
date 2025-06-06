@@ -1,0 +1,10 @@
+in_channels: 784
+num_classes: 10
+depth_multiple: 1.0
+width_multiple: 1.0
+
+layers:
+- [ -1, 1, LinearBlock, 256, { act: relu } ]
+- [ -1, 1, LinearBlock, 1024, { act: relu } ]
+- [ -1, 1, LinearBlock, 256, { act: relu } ]
+- [ -1, 1, LinearBlock, num_classes ]
