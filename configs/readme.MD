@@ -1,19 +1,13 @@
-파일에 직접 패치하는 과정에서 오류가 발생했습니다.
-VS Code에서 readme.MD 를 여신 뒤, 아래 마크다운을 통째로 덮어-붙여 주세요. (기존 내용은 지워도 됩니다.)
+# 📑 FlexoZero 모델 YAML 가이드
 
-⸻
-
-
-# 📑 커스텀 모델 YAML 가이드
-
-> **DeepZero Model Builder** (`deepzero/core/model_builder.py`)에서 사용할 **YAML-기반 네트워크 정의 문법**을 설명합니다.
+> **FlexoZero AutoBuilder** (`flexo/autobuilder.py`)에서 사용할 **YAML 기반 네트워크 정의 문법**을 설명합니다.
 >
 > ```python
-> from deepzero.core import model_builder
-> net = model_builder.build_model_from_yaml("configs/my_model.yaml")
+> from flexo.autobuilder import YamlModel
+> model = YamlModel("configs/my_model.yaml")
 > ```
 >
-> 위처럼 호출하면 곧바로 PyTorch `nn.Module` 객체가 생성됩니다.
+> 위처럼 호출하면 곧바로 모델 객체가 생성됩니다.
 
 ---
 
@@ -23,122 +17,140 @@ VS Code에서 readme.MD 를 여신 뒤, 아래 마크다운을 통째로 덮어-
 in_channels: 3          # (필수) 입력 채널 수
 num_classes: 100        # (선택) 전역 변수, 문자열 치환용
 depth_multiple: 1.0     # (선택) 레이어 반복 스케일
-width_multiple: 1.0     # (선택) 채널  스케일
+width_multiple: 1.0     # (선택) 채널 수 스케일
 
 layers:
-  #   from  repeat  Block                      positional-args…               kwargs
-  - [  -1,     1,   ConvBlock,                 64, 3, 2,                      {act: relu, drop: 0.1} ]
-  - [  -1,     2,   TransformerEncoderBlock,   128, 4, 8 ]
+  #   from  repeat  Block                     positional-args                 kwargs
+  - [  -1,     1,   ConvBlock,                64, 3, 2,                      {act: relu, drop: 0.1} ]
+  - [  -1,     2,   TransformerEncoderBlock,  128, 4, 8 ]
   - [  -1,     1,   GlobalAvgPool ]
-  - [  -1,     1,   LinearBlock,               num_classes,                  {norm: ln} ]
+  - [  -1,     1,   LinearBlock,              num_classes,                   {norm: ln} ]
 ```
-## 필드 설명
-### from	
-입력으로 삼을 이전 레이어 인덱스 (-1 = 직전, -2 = 두 단계 전)
-### repeat	
-블록 반복 횟수 (depth_multiple가 곱해진 뒤 반올림)
-### Block	
-``` ConvBlock, LinearBlock, TransformerEncoderBlock, GlobalAvgPool 또는 직접 구현한 블록 ```
 
-positional args	블록별 필수 인자  
-• ConvBlock → out_channels, kernel, stride  • LinearBlock → out_features  • TransformerEncoderBlock → dim, heads, mlp_ratio
-kwargs	선택 : act, norm, drop 등 공통 하이퍼파라미터
+## 2. 필드 설명
 
+### from
+입력으로 사용할 이전 레이어 인덱스 (-1 = 직전 레이어, -2 = 두 단계 전)
 
-⸻
+### repeat
+블록 반복 횟수 (depth_multiple 값이 곱해진 뒤 반올림)
 
-2. 공통 하이퍼파라미터
+### Block
+사용할 블록 유형: `ConvBlock`, `LinearBlock`, `TransformerEncoderBlock`, `GlobalAvgPool` 등
 
-옵션	값	적용 블록	기본값
-act	silu, relu, gelu, tanh, identity	Conv / Linear	silu
-norm	bn, ln, gn, none(null)	Conv(2D) / Linear(1D)	bn
-drop	0 ~ 1 (확률)	Conv → Dropout2d, Linear → Dropout	0
+### positional args
+블록별 필수 인자:
+- **ConvBlock**: out_channels, kernel_size, stride
+- **LinearBlock**: out_features
+- **TransformerEncoderBlock**: embed_dim, num_heads, hidden_dim
 
-{act: gelu, norm: gn, drop: 0.25}
+### kwargs
+선택적 하이퍼파라미터: act, norm, drop 등 공통 매개변수
 
+## 3. 공통 하이퍼파라미터
 
-⸻
+| 옵션 | 값 | 적용 블록 | 기본값 |
+|------|------|------------|--------|
+| act | relu, silu, gelu, tanh | Conv / Linear | relu |
+| norm | bn, ln, none | Conv / Linear | bn |
+| drop | 0 ~ 1 (확률) | Conv / Linear | 0 |
 
-3. 지원 블록 & 시그니처
+예시: `{act: gelu, norm: ln, drop: 0.25}`
 
-블록	생성자 서명	설명
-ConvBlock	c_in, c_out, k, s, *, act, norm, drop	Same-padding 2D Conv
-LinearBlock	_dummy, out_features, *, act, norm, drop	Flatten → Linear
-TransformerEncoderBlock	dim, heads, mlp_ratio	ViT-style 인코더 (출력 4-D 복귀)
-GlobalAvgPool	–	(B,C,H,W) → (B,C)
+## 4. 지원 블록 & 시그니처
 
-새 블록을 추가하려면
+| 블록 | 생성자 시그니처 | 설명 |
+|------|-------------|------|
+| ConvBlock | in_channels, out_channels, kernel_size, stride, act, norm, drop | 합성곱 블록 |
+| LinearBlock | in_features, out_features, act, drop | 완전 연결 레이어 |
+| TransformerEncoderBlock | embed_dim, num_heads, hidden_dim, drop | Transformer 인코더 |
+| GlobalAvgPool | - | (B,C,H,W) → (B,C) |
 
-class MyBlock(BlockBase):
+새 블록을 추가하려면:
+
+```python
+class MyBlock(Model):
+    # 블록 구현
     ...
 
-처럼 정의하면 레지스트리에 자동 등록됩니다.
+# 레지스트리에 등록
+BLOCK_REGISTRY['MyBlock'] = MyBlock
+```
 
-⸻
+## 5. 전역 변수 치환
 
-4. 전역 변수 치환
-
-num_classes: 5
+```yaml
+num_classes: 10
 layers:
-  - [ -1, 1, LinearBlock, num_classes ]   # ⇒ out_features = 5
+  - [ -1, 1, LinearBlock, num_classes ]   # ⇒ out_features = 10
+```
 
+## 6. 예시 – VGG16 모델
 
-⸻
-
-5. 예시 – Tiny ViT Classifier
-
-# tiny_vit.yaml
-in_channels: 3
+```yaml
+# vgg16.yaml - MNIST용 VGG16 모델
+in_channels: 1
 num_classes: 10
 depth_multiple: 1.0
-width_multiple: 0.5   # 채널 절반
+width_multiple: 0.5   # 채널 절반으로 축소
 
 layers:
-- [ -1, 1, ConvBlock, 64, 7, 2 ]                         # 112×112
-- [ -1, 1, ConvBlock, 128, 3, 2,   {drop: 0.1} ]
-- [ -1, 2, TransformerEncoderBlock, 128, 4, 4 ]
-- [ -1, 1, ConvBlock, 256, 3, 2 ]
-- [ -1, 1, GlobalAvgPool ]
-- [ -1, 1, LinearBlock, 512,          {act: relu} ]
-- [ -1, 1, LinearBlock, num_classes,  {act: identity, norm: none} ]
+  # Block 1
+  - [-1, 1, ConvBlock, 64, 3, 1, {act: relu, norm: bn}]
+  - [-1, 1, ConvBlock, 64, 3, 1, {act: relu, norm: bn}]
+  - [-1, 1, ConvBlock, 64, 2, 2, {act: relu}]
 
+  # Block 2
+  - [-1, 1, ConvBlock, 128, 3, 1, {act: relu, norm: bn}]
+  - [-1, 1, ConvBlock, 128, 3, 1, {act: relu, norm: bn}]
+  - [-1, 1, ConvBlock, 128, 2, 2, {act: relu}]
 
-⸻
+  # 특성 평탄화 (Flatten)
+  - [-1, 1, GlobalAvgPool, 0]
 
-6. 고급 팁
+  # 완전 연결 레이어
+  - [-1, 1, LinearBlock, 512, 0, 0, {act: relu, drop: 0.5}]
+  - [-1, 1, LinearBlock, 10, 0, 0, {}]
+```
 
-목적	방법
-깊이·폭 스케일	depth_multiple, width_multiple 값 조정
-Dropout OFF	drop: 0 또는 생략
-BatchNorm 없는 Conv	{norm: none}
-LayerNorm Conv	{norm: ln} (GroupNorm 1 그룹 활용)
-반복 블록별 다른 Act	반복을 나눠 별도 레이어로 선언
+## 7. 고급 팁
 
+| 목적 | 방법 |
+|------|------|
+| 모델 크기 조정 | depth_multiple, width_multiple 값 조정 |
+| Dropout 비활성화 | drop: 0 또는 생략 |
+| BatchNorm 없는 Conv | {norm: none} |
+| LayerNorm 사용 | {norm: ln} |
+| 다양한 활성화 함수 | 반복 블록을 별도 레이어로 선언하고 각각 다른 act 지정 |
 
-⸻
+## 8. 자주 발생하는 오류 & 해결법
 
-7. 자주 나는 오류 & 해결
+| 오류 | 원인 / 해결 |
+|------|------------|
+| 차원 불일치 오류 | 레이어 간 입출력 채널 수 확인, 특히 GlobalAvgPool 후 차원 확인 |
+| 블록 레지스트리 오류 | YAML에 명시된 블록 이름이 실제 등록된 클래스와 일치하는지 확인 |
+| 형상 변환 문제 | Conv와 Linear 연결 시 차원 계산 문제, reshape 필요 여부 확인 |
 
-오류	원인 / 해결
-expected 4D input (got 3D)	Transformer 뒤 Conv 배치에서 3-D 전달 → 레이어 순서·채널 확인
-BlockBase.registry KeyError	YAML Block 이름이 실제 클래스와 다름
-L이 정사각 격자에 대응되지 않습니다	Transformer 토큰 수가 제곱수가 아님 → 입력 해상도·stride 점검
+## 9. 모델 빌드 & 테스트 코드
 
+```python
+import numpy as np
+import flexo
+from flexo.autobuilder import YamlModel
 
-⸻
+# 모델 생성
+model = YamlModel("configs/vgg16.yaml")
 
-8. 빌드 & 테스트 스니펫
+# 테스트 입력
+x = flexo.Variable(np.random.randn(1, 1, 28, 28).astype(np.float32))
 
-import torch
-from deepzero.core import model_builder
+# 순전파
+y = model(x)
+print(f"출력 형상: {y.shape}")  # 예상 출력: (1, 10)
 
-net = model_builder.build_model_from_yaml("configs/tiny_vit.yaml")
-x   = torch.randn(1, 3, 224, 224)
+# 모델 학습
+optimizer = flexo.optimizers.Adam().setup(model)
+# ... 학습 루프 구현 ...
+```
 
-print(net(x).shape)                      # torch.Size([1, 10])
-print("params:", sum(p.numel() for p in net.parameters()) / 1e6, "M")
-
-
-⸻
-
-이 가이드를 참고하여 자유롭게 YAML을 편집하며 나만의 모델을 설계해 보세요!
+이 가이드를 참고하여 다양한 모델을 자유롭게 설계해 보세요!

@@ -14,6 +14,8 @@ from flexo.models import Model
 from flexo.datasets import Dataset
 from flexo.dataloaders import DataLoader
 from flexo.dataloaders import SeqDataLoader
+from flexo.autobuilder import YamlModel
+from flexo.model_info import display_model_info
 
 import flexo.datasets
 import flexo.dataloaders

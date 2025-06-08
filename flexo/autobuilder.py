@@ -15,7 +15,7 @@ class YamlModel(Model):
     def __init__(self, config_path: str):
         super().__init__()
         # 1) YAML 로드
-        with open(config_path, 'r') as f:
+        with open(config_path, 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
 
         # 2) 기본 설정

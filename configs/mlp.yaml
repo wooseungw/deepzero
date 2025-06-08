@@ -1,0 +1,7 @@
+in_channels: 10
+num_classes: 1
+depth_multiple: 1.0
+width_multiple: 1.0
+layers:
+- [ -1, 1, LinearBlock, 32, { act: relu } ]
+- [ -1, 1, LinearBlock, num_classes ]

@@ -1,0 +1,38 @@
+# ResNet18 Model Configuration (MNIST 용으로 간소화)
+# ResNet의 특징인 Skip Connection을 가진 모델
+
+# 기본 설정
+in_channels: 1  # MNIST 이미지는 흑백 1채널
+num_classes: 10  # MNIST 클래스 수
+input_size: [28, 28]  # MNIST 이미지 크기
+
+# 스케일링 factor
+depth_multiple: 1.0
+width_multiple: 0.5  # 원래보다 작은 채널 수 사용
+
+# 레이어 정의 [from, number, block_type, out_channels, kernel_size, stride, {params}]
+layers:
+  # 초기 층
+  - [-1, 1, ConvBlock, 64, 7, 2, {act: relu, norm: bn}]   # Conv1: 28x28 -> 14x14
+  
+  # 1단계 블록
+  - [-1, 1, ConvBlock, 64, 3, 1, {act: relu, norm: bn}]   # Conv2_1
+  - [-1, 1, ConvBlock, 64, 3, 1, {act: relu, norm: bn}]   # Conv2_2
+  
+  # 2단계 블록 (다운샘플링)
+  - [-1, 1, ConvBlock, 128, 3, 2, {act: relu, norm: bn}]  # Conv3_1: 14x14 -> 7x7
+  - [-1, 1, ConvBlock, 128, 3, 1, {act: relu, norm: bn}]  # Conv3_2
+  
+  # 3단계 블록 (다운샘플링)
+  - [-1, 1, ConvBlock, 256, 3, 2, {act: relu, norm: bn}]  # Conv4_1: 7x7 -> 4x4
+  - [-1, 1, ConvBlock, 256, 3, 1, {act: relu, norm: bn}]  # Conv4_2
+  
+  # 4단계 블록 (다운샘플링)
+  - [-1, 1, ConvBlock, 512, 3, 2, {act: relu, norm: bn}]  # Conv5_1: 4x4 -> 2x2
+  - [-1, 1, ConvBlock, 512, 3, 1, {act: relu, norm: bn}]  # Conv5_2
+  
+  # 전역 평균 풀링
+  - [-1, 1, GlobalAvgPool, 0]                             # 전역 평균 풀링으로 차원 감소
+  
+  # 완전 연결 레이어 (분류기)
+  - [-1, 1, LinearBlock, 10, 0, 0, {}]                    # 출력 레이어

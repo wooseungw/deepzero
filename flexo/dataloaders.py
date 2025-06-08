@@ -26,6 +26,10 @@ class DataLoader:
         else:
             self.index = np.arange(len(self.dataset))
 
+
+    def __len__(self):
+        return self.max_iter
+    
     def __iter__(self):
         return self
 
