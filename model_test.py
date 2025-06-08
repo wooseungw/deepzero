@@ -1,9 +1,9 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # 예제 스크립트: config/model.yaml을 로드해서 YOLOModel 생성 후 더미 입력으로 테스트
 # ──────────────────────────────────────────────────────────────────────────────
-
 import numpy as np
 from flexo.autobuilder import YamlModel
+from flexo import display_model_info
 from flexo import Variable
 
 def main():
@@ -12,6 +12,8 @@ def main():
 
     # 2) 모델 생성
     model = YamlModel(config_path)
+    model.plot()
+    display_model_info(config_path)  # 모델 정보 출력
 
     # 3) 더미 입력 (배치 크기 4, 채널 3, 32×32 이미지)
     #    Dezero에선 NCHW 형태의 numpy 배열을 바로 넣어도 자동으로 Variable로 래핑
