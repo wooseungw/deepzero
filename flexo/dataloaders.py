@@ -5,7 +5,7 @@ try:
 except:
     pil_available = False
 import numpy as np
-from flexzero import cuda
+from flexo import cuda
 
 
 class DataLoader:

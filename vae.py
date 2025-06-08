@@ -1,15 +1,15 @@
 import numpy as np
 from scipy.stats import norm
 import matplotlib.pyplot as plt
-import flexzero
-import flexzero.functions as F
-import flexzero.layers as L
-from flexzero import DataLoader
-from flexzero.models import Model
-from flexzero.optimizers import Adam
+import flexo
+import flexo.functions as F
+import flexo.layers as L
+from flexo import DataLoader
+from flexo.models import Model
+from flexo.optimizers import Adam
 
 
-use_gpu = flexzero.cuda.gpu_enable
+use_gpu = flexo.cuda.gpu_enable
 max_epoch = 10
 batch_size = 16
 latent_size = 2
@@ -40,7 +40,7 @@ class Encoder(Model):
 
     def sampling(self, z_mean, z_log_var):
         batch_size = len(z_mean)
-        xp = flexzero.cuda.get_array_module(z_mean.data)
+        xp = flexo.cuda.get_array_module(z_mean.data)
         epsilon = xp.random.randn(batch_size, self.latent_size)
         return z_mean + F.exp(z_log_var) * epsilon
 
@@ -104,11 +104,11 @@ def show_digits(epoch=0):
         for j, xi in enumerate(grid_y):
             z_sample = np.array([[xi, yi]])
             if use_gpu:
-                z_sample = flexzero.cuda.as_cupy(z_sample)
-            with flexzero.no_grad():
+                z_sample = flexo.cuda.as_cupy(z_sample)
+            with flexo.no_grad():
                 x_decoded = vae.decoder(z_sample)
             if use_gpu:
-                x_decoded.data = flexzero.cuda.as_numpy(x_decoded.data)
+                x_decoded.data = flexo.cuda.as_numpy(x_decoded.data)
             digit = x_decoded.data.reshape(digit_size, digit_size)
             figure[i * digit_size: (i + 1) * digit_size,
             j * digit_size: (j + 1) * digit_size] = digit
@@ -124,13 +124,13 @@ vae = VAE(latent_size)
 optimizer = Adam().setup(vae)
 
 transform = lambda x: (x / 255.0).astype(np.float32)
-train_set = flexzero.datasets.MNIST(train=True, transform=transform)
+train_set = flexo.datasets.MNIST(train=True, transform=transform)
 train_loader = DataLoader(train_set, batch_size)
 
 if use_gpu:
     vae.to_gpu()
     train_loader.to_gpu()
-    xp = flexzero.cuda.cupy
+    xp = flexo.cuda.cupy
 else:
     xp = np
 

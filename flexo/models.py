@@ -1,8 +1,8 @@
 import numpy as np
-from flexzero import Layer
-import flexzero.functions as F
-import flexzero.layers as L
-from flexzero import utils
+from flexo import Layer
+import flexo.functions as F
+import flexo.layers as L
+from flexo import utils
 
 
 

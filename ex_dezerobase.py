@@ -3,8 +3,8 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 import numpy as np
-from flexzero.autobuilder import YamlModel
-from flexzero import Variable
+from flexo.autobuilder import YamlModel
+from flexo import Variable
 
 def main():
     # 1) YAML 파일 경로 지정
@@ -26,8 +26,8 @@ def main():
     targets = np.random.randint(0, model.num_classes, size=(4,))
     loss = model.cleargrads();  # 클리어해두고
     out = model(x)             # 순전파
-    import flexzero.functions as F
-    import flexzero.layers as L
+    import flexo.functions as F
+    import flexo.layers as L
 
     # Dezero에서는 softmax_cross_entropy에 레이블(정수) 바로 넣을 수 있음
     loss = F.softmax_cross_entropy(out, targets)

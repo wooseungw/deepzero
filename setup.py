@@ -1,5 +1,5 @@
 from setuptools import setup
-from flexzero import __version__
+from flexo import __version__
 
 setup(name='flexzero',
       version=__version__,

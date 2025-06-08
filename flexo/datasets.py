@@ -4,8 +4,8 @@ import tarfile
 import pickle
 import numpy as np
 import matplotlib.pyplot as plt
-from flexzero.utils import get_file, cache_dir
-from flexzero.transforms import Compose, Flatten, ToFloat, Normalize
+from flexo.utils import get_file, cache_dir
+from flexo.transforms import Compose, Flatten, ToFloat, Normalize
 
 
 class Dataset:

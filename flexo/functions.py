@@ -1,7 +1,7 @@
 import numpy as np
-import flexzero
-from flexzero import cuda, utils
-from flexzero.core import Function, Variable, as_variable, as_array
+import flexo
+from flexo import cuda, utils
+from flexo.core import Function, Variable, as_variable, as_array
 
 
 # =============================================================================
@@ -150,7 +150,7 @@ class GetItemGrad(Function):
         self.in_shape = in_shape
 
     def forward(self, gy):
-        xp = flexzero.cuda.get_array_module(gy)
+        xp = flexo.cuda.get_array_module(gy)
         gx = xp.zeros(self.in_shape, dtype=gy.dtype)
 
         if xp is np:
@@ -230,7 +230,7 @@ class BroadcastTo(Function):
 
     def forward(self, x):
         self.x_shape = x.shape
-        xp = flexzero.cuda.get_array_module(x)
+        xp = flexo.cuda.get_array_module(x)
         y = xp.broadcast_to(x, self.shape)
         return y
 
@@ -517,7 +517,7 @@ def accuracy(y, t):
 def dropout(x, dropout_ratio=0.5):
     x = as_variable(x)
 
-    if flexzero.Config.train:
+    if flexo.Config.train:
         xp = cuda.get_array_module(x)
         mask = xp.random.rand(*x.shape) > dropout_ratio
         scale = xp.array(1.0 - dropout_ratio).astype(x.dtype)
@@ -546,7 +546,7 @@ class BatchNorm(Function):
 
         xp = cuda.get_array_module(x)
 
-        if flexzero.Config.train:
+        if flexo.Config.train:
             mean = x.mean(axis=0)
             var = x.var(axis=0)
             inv_std = 1 / xp.sqrt(var + self.eps)
@@ -702,18 +702,18 @@ def clip(x, x_min, x_max):
 # =============================================================================
 # conv2d / col2im / im2col / basic_math
 # =============================================================================
-from flexzero.functions_conv import conv2d
-from flexzero.functions_conv import deconv2d
-from flexzero.functions_conv import conv2d_simple
-from flexzero.functions_conv import im2col
-from flexzero.functions_conv import col2im
-from flexzero.functions_conv import pooling_simple
-from flexzero.functions_conv import pooling
-from flexzero.functions_conv import average_pooling
-from flexzero.core import add
-from flexzero.core import sub
-from flexzero.core import rsub
-from flexzero.core import mul
-from flexzero.core import div
-from flexzero.core import neg
-from flexzero.core import pow
+from flexo.functions_conv import conv2d
+from flexo.functions_conv import deconv2d
+from flexo.functions_conv import conv2d_simple
+from flexo.functions_conv import im2col
+from flexo.functions_conv import col2im
+from flexo.functions_conv import pooling_simple
+from flexo.functions_conv import pooling
+from flexo.functions_conv import average_pooling
+from flexo.core import add
+from flexo.core import sub
+from flexo.core import rsub
+from flexo.core import mul
+from flexo.core import div
+from flexo.core import neg
+from flexo.core import pow

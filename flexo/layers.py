@@ -1,11 +1,11 @@
 import os
 import weakref
 import numpy as np
-import flexzero
-import flexzero.functions as F
-from flexzero import cuda
-from flexzero.core import Parameter
-from flexzero.utils import pair
+import flexo
+import flexo.functions as F
+from flexo import cuda
+from flexo.core import Parameter
+from flexo.utils import pair
 
 
 # =============================================================================
@@ -365,7 +365,7 @@ class Dropout(Layer):
 
     def forward(self, x):
         # Use global Config.train flag to determine mode
-        if flexzero.Config.train:
+        if flexo.Config.train:
             return F.dropout(x, self.ratio)
         else:
             return x

@@ -2,9 +2,9 @@ import os
 import subprocess
 import urllib.request
 import numpy as np
-from flexzero import as_variable
-from flexzero import Variable
-from flexzero import cuda
+from flexo import as_variable
+from flexo import Variable
+from flexo import cuda
 
 
 # =============================================================================

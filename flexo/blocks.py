@@ -4,9 +4,9 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 import numpy as np
-from flexzero import Model
-import flexzero.functions as F
-import flexzero.layers as L
+from flexo import Model
+import flexo.functions as F
+import flexo.layers as L
 
 class ConvBlock(Model):
     """

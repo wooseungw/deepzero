@@ -1,23 +1,23 @@
-import flexzero
-import flexzero.functions as F
-from flexzero import DataLoader
-from flexzero.models import MLP
+import flexo
+import flexo.functions as F
+from flexo import DataLoader
+from flexo.models import MLP
 
 
 max_epoch = 5
 batch_size = 100
 hidden_size = 1000
 
-train_set = flexzero.datasets.MNIST(train=True)
-test_set = flexzero.datasets.MNIST(train=False)
+train_set = flexo.datasets.MNIST(train=True)
+test_set = flexo.datasets.MNIST(train=False)
 train_loader = DataLoader(train_set, batch_size)
 test_loader = DataLoader(test_set, batch_size, shuffle=False)
 
 model = MLP((hidden_size, hidden_size, 10), activation=F.relu)
-optimizer = flexzero.optimizers.Adam().setup(model)
-optimizer.add_hook(flexzero.optimizers.WeightDecay(1e-4))  # Weight decay
+optimizer = flexo.optimizers.Adam().setup(model)
+optimizer.add_hook(flexo.optimizers.WeightDecay(1e-4))  # Weight decay
 
-if flexzero.cuda.gpu_enable:
+if flexo.cuda.gpu_enable:
     train_loader.to_gpu()
     test_loader.to_gpu()
     model.to_gpu()
@@ -41,7 +41,7 @@ for epoch in range(max_epoch):
         sum_loss / len(train_set), sum_acc / len(train_set)))
 
     sum_loss, sum_acc = 0, 0
-    with flexzero.no_grad():
+    with flexo.no_grad():
         for x, t in test_loader:
             y = model(x)
             loss = F.softmax_cross_entropy(y, t)

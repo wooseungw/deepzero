@@ -5,7 +5,7 @@ try:
     cupy = cp
 except ImportError:
     gpu_enable = False
-from flexzero import Variable
+from flexo import Variable
 
 
 def get_array_module(x):

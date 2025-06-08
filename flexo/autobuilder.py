@@ -4,8 +4,8 @@
 
 import numpy as np
 import yaml
-from flexzero import Model
-import flexzero.functions as F
+from flexo import Model
+import flexo.functions as F
 from .blocks import get_block_class
 
 class YamlModel(Model):
