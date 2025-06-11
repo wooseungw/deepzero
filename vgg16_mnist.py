@@ -5,31 +5,49 @@ import flexo.functions as F
 from flexo import DataLoader
 from flexo.optimizers import Adam
 from flexo.autobuilder import YamlModel
+from torchvision.models import vgg16
 
+
+import torch
 
 class VGG16Model(YamlModel):
     def __init__(self, config_path, num_classes=10):
         super().__init__(config_path)
         self.num_classes = num_classes
-        
-    def forward(self, x):
-        """
-        기본 YamlModel 포워드 함수 사용 후 추가 처리
-        """
-        # 기본 모델 출력
-        h = super().forward(x)
-        return h
+
+    def load_partial_pretrained(self):
+        """PyTorch VGG16 pretrained weight를 일부 레이어에만 로드"""
+        vgg = vgg16(weights="IMAGENET1K_V1")
+        vgg_state = vgg.state_dict()
+        matched = 0
+        for param in self.params():
+            # param.data가 None이면 건너뜀
+            if getattr(param, "data", None) is None:
+                continue
+            for vgg_k, vgg_param in vgg_state.items():
+                if 'features' in vgg_k and 'weight' in vgg_k:
+                    if param.data.shape == vgg_param.shape:
+                        param.data[...] = vgg_param.cpu().numpy()
+                        matched += 1
+                        break
+                if 'features' in vgg_k and 'bias' in vgg_k:
+                    if param.data.shape == vgg_param.shape:
+                        param.data[...] = vgg_param.cpu().numpy()
+                        matched += 1
+                        break
+        print(f'Pretrained weight {matched}개 레이어에 적용됨')
 
 
 def train_mnist():
     # 설정
-    gpu_enable = flexo.cuda.gpu_enable
+    gpu_enable = False
     max_epoch = 10
     batch_size = 100
     lr = 0.001
     
     # 모델 생성
     model = VGG16Model('configs/vgg16.yaml')
+    model.load_partial_pretrained()
     
     # 손실 함수와 옵티마이저
     optimizer = Adam().setup(model)
