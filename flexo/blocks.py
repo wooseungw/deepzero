@@ -8,7 +8,26 @@ from flexo import Model
 import flexo.functions as F
 import flexo.layers as L
 
-class ConvBlock(Model):
+# ──────────────────────────────────────────────────────────────────────────────
+# 자동 등록을 위한 메타클래스
+# ──────────────────────────────────────────────────────────────────────────────
+
+BLOCK_REGISTRY = {}
+
+class AutoRegisterMeta(type):
+    """블록 클래스를 자동으로 레지스트리에 등록하는 메타클래스"""
+    def __new__(mcs, name, bases, attrs):
+        cls = super().__new__(mcs, name, bases, attrs)
+        # Model을 상속받는 클래스만 등록 (BaseBlock 제외)
+        if bases and any(issubclass(base, Model) for base in bases) and name != 'BaseBlock':
+            BLOCK_REGISTRY[name] = cls
+        return cls
+
+class BaseBlock(Model, metaclass=AutoRegisterMeta):
+    """모든 블록의 기본 클래스"""
+    pass
+
+class ConvBlock(BaseBlock):
     """
     Conv → Norm → Activation → Dropout 구성 블록
     """
@@ -60,7 +79,7 @@ class ConvBlock(Model):
         return h
 
 
-class GlobalAvgPool(Model):
+class GlobalAvgPool(BaseBlock):
     """
     (B, C, H, W) → (B, C) 로 평균 풀링
     """
@@ -69,7 +88,7 @@ class GlobalAvgPool(Model):
         return F.mean(x, axis=(2, 3))
 
 
-class LinearBlock(Model):
+class LinearBlock(BaseBlock):
     """
     Linear → Activation → Dropout 구성 블록
     """
@@ -99,7 +118,7 @@ class LinearBlock(Model):
         return h
 
 
-class TransformerEncoderBlock(Model):
+class TransformerEncoderBlock(BaseBlock):
     """
     단순화된 Transformer Encoder 블록 예시.
     - embed_dim: 입력 임베딩 차원
@@ -147,16 +166,8 @@ class TransformerEncoderBlock(Model):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 블록 레지스트리: YAML의 block_type 문자열 → 실제 클래스 매핑
+# 블록 레지스트리 접근 함수
 # ──────────────────────────────────────────────────────────────────────────────
-
-BLOCK_REGISTRY = {
-    'ConvBlock': ConvBlock,
-    'GlobalAvgPool': GlobalAvgPool,
-    'LinearBlock': LinearBlock,
-    'TransformerEncoderBlock': TransformerEncoderBlock,
-}
-
 
 def get_block_class(name: str):
     if name not in BLOCK_REGISTRY:
